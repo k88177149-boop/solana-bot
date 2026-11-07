@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solana Bot • Phantom</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#050505;color:#fff;font:15px Arial,sans-serif}
+main{max-width:760px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{font-size:24px;margin:8px 0}p,.muted{color:#aaa}.card{background:#111;border:1px solid #292929;border-radius:14px;padding:16px;margin:14px 0}
+button{border:0;border-radius:10px;padding:13px 16px;font-weight:bold;background:#a78bfa;color:#100b1c;cursor:pointer}
+button.secondary{background:#242424;color:#fff;border:1px solid #444}button:disabled{opacity:.5}
+.status{padding:9px 12px;border-radius:9px;background:#1b1b1b;color:#ddd;margin-top:10px;word-break:break-word}
+.big{font-size:27px;font-weight:bold}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.token{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #292929;padding:10px 0}
+.green{color:#45d483}.yellow{color:#f4cf54}.red{color:#ff6262}
+input{width:100%;padding:12px;background:#080808;color:white;border:1px solid #444;border-radius:8px}
+small{color:#999}.warning{border-color:#654f21;color:#f1d28a}
+</style>
+</head>
+<body><main>
+<div class="top"><div><h1>BOT SOLANA</h1><div class="muted">Modalità simulazione · Phantom</div></div><div>● <span class="green">PRONTO</span></div></div>
+<div class="card">
+<h2>Portafoglio Phantom</h2>
+<p>Collega Phantom per leggere il tuo indirizzo, il saldo SOL e i token. Il sito non chiederà mai la frase segreta.</p>
+<button id="connect">COLLEGA PHANTOM</button>
+<button id="refresh" class="secondary" disabled>Aggiorna saldo</button>
+<div id="status" class="status">Portafoglio non collegato.</div>
+</div>
+<div class="grid">
+<div class="card"><div class="muted">Saldo SOL</div><div class="big" id="sol">—</div></div>
+<div class="card"><div class="muted">Valore SOL indicativo</div><div class="big" id="solvalue">—</div></div>
+</div>
+<div class="card"><h2>I tuoi token</h2><div id="tokens" class="muted">Collega Phantom per visualizzare i token SPL.</div></div>
+<div class="card">
+<h2>Bot automatico (simulazione)</h2>
+<div class="grid"><div><div class="muted">Posizioni massime</div><div class="big">10</div></div><div><div class="muted">Capitale virtuale</div><div class="big">1.000 $</div></div></div>
+<p><span class="green">VERDE</span> = acquisto simulato · <span class="yellow">GIALLO</span> = aspetta · <span class="red">ROSSO</span> = non comprare</p>
+<div class="status warning">Questa versione collega il wallet in sola lettura. Non esegue acquisti o vendite reali e non firma transazioni. Ogni operazione reale deve essere controllata e approvata in Phantom.</div>
+</div>
+<small>Nota: per vedere il collegamento su Android, apri questa pagina nel browser integrato di Phantom oppure in un browser che supporta il provider Phantom. In Chrome normale il provider potrebbe non essere disponibile.</small>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let provider=null, pubkey=null;
+const rpc='https://api.mainnet-beta.solana.com';
+function setStatus(s){$('status').textContent=s}
+async function rpcCall(method,params=[]){
+ const r=await fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+ if(!r.ok) throw new Error('Errore connessione rete Solana');
+ const j=await r.json(); if(j.error) throw new Error(j.error.message||'Errore RPC'); return j.result;
+}
+async function loadWallet(){
+ if(!pubkey)return;
+ setStatus('Leggo il saldo e i token…');
+ try{
+  const key=pubkey.toString();
+  const bal=await rpcCall('getBalance',[key,{commitment:'confirmed'}]);
+  const sol=bal.value/1e9;
+  $('sol').textContent=sol.toLocaleString('it-IT',{maximumFractionDigits:6})+' SOL';
+  try{
+   const price=await fetch('https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112').then(r=>r.json());
+   const pairs=price.pairs||[];
+   const usd=Number(pairs.find(p=>p.chainId==='solana')?.priceUsd||0);
+   $('solvalue').textContent=usd?('$'+(sol*usd).toFixed(2)):'Non disponibile';
+  }catch(e){$('solvalue').textContent='Non disponibile'}
+  const accounts=await rpcCall('getTokenAccountsByOwner',[key,{programId:'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'},{encoding:'jsonParsed',commitment:'confirmed'}]);
+  const rows=(accounts.value||[]).map(a=>{
+   const x=a.account.data.parsed.info;
+   return {mint:x.mint,amount:x.tokenAmount.uiAmountString||'0',decimals:x.tokenAmount.decimals};
+  }).filter(x=>Number(x.amount)>0);
+  $('tokens').innerHTML='';
+  if(!rows.length){$('tokens').textContent='Nessun token SPL trovato.'}
+  else rows.forEach(t=>{
+   const d=document.createElement('div');d.className='token';
+   const left=document.createElement('span');left.textContent=t.mint.slice(0,5)+'…'+t.mint.slice(-5);
+   const right=document.createElement('span');right.textContent=Number(t.amount).toLocaleString('it-IT',{maximumFractionDigits:6});
+   d.append(left,right);$('tokens').append(d);
+  });
+  setStatus('Collegato: '+key);
+ }catch(e){setStatus('Errore: '+e.message)}
+}
+$('connect').onclick=async()=>{
+ provider=window.phantom?.solana;
+ if(!provider?.isPhantom){
+  setStatus('Phantom non rilevato. Apri questa pagina nel browser di Phantom su Android, oppure usa un browser con estensione/provider Phantom.');
+  return;
+ }
+ try{
+  const res=await provider.connect();
+  pubkey=res.publicKey;
+  $('refresh').disabled=false;
+  $('connect').textContent='PHANTOM COLLEGATO';
+  await loadWallet();
+ }catch(e){setStatus('Collegamento annullato o non riuscito: '+e.message)}
+};
+$('refresh').onclick=loadWallet;
+</script></body></html>
