@@ -43,7 +43,7 @@ small{color:#999}.warning{border-color:#654f21;color:#f1d28a}
 <script>
 const $=id=>document.getElementById(id);
 let provider=null, pubkey=null;
-const rpc='https://api.mainnet-beta.solana.com';
+const rpc='https://solana-rpc.publicnode.com';
 function setStatus(s){$('status').textContent=s}
 async function rpcCall(method,params=[]){
  const r=await fetch(rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
